@@ -43,6 +43,7 @@ dependencies:
   table_calendar:
   tuple:
   http:
+  fluttertoast: ^8.0.9
 
 
 dev_dependencies:

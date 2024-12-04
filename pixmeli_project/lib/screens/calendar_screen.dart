@@ -17,17 +17,15 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  int _diaryCount = 0; // 작성한 일기 개수
+  int _diaryCount = 0;
 
-  final Map<DateTime, String> _diaryImages = {
-    DateTime(2024, 11, 4): 'assets/images/diary1.png',
-    DateTime(2024, 11, 13): 'assets/images/diary2.png',
-  };
+  final Set<String> _diaryDays = {}; // 일기가 있는 날의 문서 이름 저장
 
   @override
   void initState() {
     super.initState();
-    _fetchDiaryCount(); // 초기화 시 일기 개수 가져오기
+    _fetchDiaryCount();
+    _fetchDiaryData(); // Firestore에서 데이터 가져오기
   }
 
   Future<void> _fetchDiaryCount() async {
@@ -52,6 +50,32 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  Future<void> _fetchDiaryData() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid != null) {
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('User')
+            .doc(uid)
+            .collection('Diaries')
+            .get();
+
+        final Set<String> diaryDays = {};
+        for (var doc in snapshot.docs) {
+          diaryDays.add(doc.id); // 문서 이름(날짜) 저장
+        }
+
+        setState(() {
+          _diaryDays.clear();
+          _diaryDays.addAll(diaryDays); // _diaryDays에 모든 날짜 추가
+        });
+      } catch (e) {
+        print('Error fetching diary data: $e');
+      }
+    }
+  }
+
   Future<void> _handleDaySelected(DateTime selectedDay, DateTime focusedDay) async {
     setState(() {
       _selectedDay = selectedDay;
@@ -70,7 +94,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           .get();
 
       if (diaryDoc.exists) {
-        final diaryData = diaryDoc.data();
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -101,7 +124,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      drawer: _buildDrawer(screenWidth), // Drawer 추가
+      drawer: _buildDrawer(screenWidth),
       body: Column(
         children: [
           // 상단 영역
@@ -119,7 +142,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       icon: const Icon(Icons.menu, color: Color(0xFF333333)),
                       iconSize: screenWidth * 0.06,
                       onPressed: () {
-                        Scaffold.of(context).openDrawer(); // Drawer 열기
+                        Scaffold.of(context).openDrawer();
                       },
                     );
                   },
@@ -222,7 +245,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
             leading: const Icon(Icons.sentiment_satisfied_alt),
             title: const Text('긍정 일기 모아보기'),
             onTap: () {
-              // 긍정 일기 기능 추가
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -266,45 +288,45 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   TableCalendar _buildCalendar(double screenWidth, double screenHeight) {
     return TableCalendar(
-      locale: 'ko_KR', // 요일을 한글로 표시
+      locale: 'ko_KR',
       firstDay: DateTime(2020, 1, 1),
       lastDay: DateTime(2030, 12, 31),
       focusedDay: _focusedDay,
       selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-      onDaySelected: _handleDaySelected, // 날짜 선택 로직 분리
+      onDaySelected: _handleDaySelected,
       calendarFormat: CalendarFormat.month,
       headerStyle: HeaderStyle(
-        formatButtonVisible: false, // "2 weeks" 버튼 제거
+        formatButtonVisible: false,
         titleCentered: true,
         titleTextFormatter: (date, locale) =>
-            DateFormat.yMMMM('ko').format(date), // '2024년 11월' 형식
+            DateFormat.yMMMM('ko').format(date),
         titleTextStyle: TextStyle(
-          fontSize: screenWidth * 0.045, // 크기 조정
+          fontSize: screenWidth * 0.045,
           fontWeight: FontWeight.bold,
           color: Colors.black,
         ),
         leftChevronIcon: Icon(Icons.chevron_left,
-            color: Colors.black, size: screenWidth * 0.05), // 크기 조정
+            color: Colors.black, size: screenWidth * 0.05),
         rightChevronIcon: Icon(Icons.chevron_right,
-            color: Colors.black, size: screenWidth * 0.05), // 크기 조정
+            color: Colors.black, size: screenWidth * 0.05),
       ),
       daysOfWeekStyle: DaysOfWeekStyle(
         weekdayStyle: TextStyle(
-          color: const Color(0xFF828282), // 주중 요일 색상 연한 회색
-          fontSize: screenWidth * 0.03, // 크기 조정
+          color: const Color(0xFF828282),
+          fontSize: screenWidth * 0.03,
         ),
         weekendStyle: TextStyle(
-          color: const Color(0xFF828282), // 주말 요일 색상 연한 회색
-          fontSize: screenWidth * 0.03, // 크기 조정
+          color: const Color(0xFF828282),
+          fontSize: screenWidth * 0.03,
         ),
       ),
       calendarStyle: CalendarStyle(
         defaultDecoration: const BoxDecoration(
-          color: Colors.white, // 기본 날짜 배경 흰색
+          color: Colors.white,
         ),
         defaultTextStyle: TextStyle(
-          color: const Color(0xFF828282), // 기본 날짜 색상 연한 회색
-          fontSize: screenWidth * 0.03, // 글자 크기 조정
+          color: const Color(0xFF828282),
+          fontSize: screenWidth * 0.03,
         ),
         todayDecoration: const BoxDecoration(
           color: Color(0xFFFDED5E),
@@ -317,45 +339,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
         outsideDaysVisible: false,
       ),
       calendarBuilders: CalendarBuilders(
-        dowBuilder: (context, day) {
-          final text = DateFormat.E('ko_KR').format(day);
-          Color color = const Color(0xFF828282);
-          if (day.weekday == DateTime.sunday) {
-            color = Colors.red;
-          } else if (day.weekday == DateTime.saturday) {
-            color = Colors.blue;
-          }
-          return Center(
-            child: Text(
-              text.substring(0, 1), // "월", "화", "수" 형식
-              style: TextStyle(color: color, fontSize: screenWidth * 0.03),
-            ),
-          );
-        },
         defaultBuilder: (context, day, focusedDay) {
-          final image = _diaryImages[day];
+          final docId = '${day.year}${day.month.toString().padLeft(2, '0')}${day.day.toString().padLeft(2, '0')}';
+          final hasDiary = _diaryDays.contains(docId); // 날짜가 _diaryDays에 포함되었는지 확인
+
           return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '${day.day}',
+            child: Container(
+              width: screenWidth * 0.07,
+              height: screenWidth * 0.07,
+              decoration: BoxDecoration(
+                color: hasDiary ? const Color(0xFFFDED5E) : Colors.transparent,
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  '${day.day}', // 날짜 표시
                   style: TextStyle(
                     fontSize: screenWidth * 0.03,
-                    color: const Color(0xFF828282),
+                    color: hasDiary ? Colors.black : const Color(0xFF828282),
                   ),
                 ),
-                if (image != null)
-                  Padding(
-                    padding: EdgeInsets.only(top: screenWidth * 0.005),
-                    child: Image.asset(
-                      image,
-                      width: screenWidth * 0.06,
-                      height: screenWidth * 0.06,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-              ],
+              ),
             ),
           );
         },

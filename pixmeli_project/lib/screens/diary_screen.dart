@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 class DiaryScreen extends StatefulWidget {
   final DateTime selectedDay;
@@ -72,14 +73,43 @@ class _DiaryScreenState extends State<DiaryScreen> {
           .delete();
 
       // 삭제 완료 후 캘린더 화면으로 이동
-      Navigator.pop(context);
-      Navigator.pushNamed(context, '/calendar_screen');
+      Navigator.pushNamedAndRemoveUntil(context, '/calendar_screen', (route) => false);
     } catch (e) {
       // 에러 처리
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('일기 삭제 중 오류가 발생했습니다.')),
       );
     }
+  }
+
+  Future<void> _showDeleteConfirmationDialog(BuildContext context) async {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFFFFF9C4), // 연노랑 색상
+          title: const Text('삭제 확인'),
+          content: const Text('정말로 삭제하시겠습니까?'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('취소'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: const Text('삭제'),
+              onPressed: () async {
+                await _deleteDiary(context); // 삭제 실행
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('삭제되었습니다.')),
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -206,8 +236,8 @@ class _DiaryScreenState extends State<DiaryScreen> {
               children: [
                 // 삭제 버튼
                 GestureDetector(
-                  onTap: () async {
-                    await _deleteDiary(context);
+                  onTap: () {
+                    _showDeleteConfirmationDialog(context);
                   },
                   child: const Text(
                     '삭제',
@@ -221,7 +251,7 @@ class _DiaryScreenState extends State<DiaryScreen> {
                 // 수정 버튼
                 GestureDetector(
                   onTap: () {
-                    //수정을 위한 로직 축가
+                    //수정을 위한 로직 추가
                   },
                   child: const Text(
                     '수정',

@@ -14,7 +14,7 @@ class WriteScreen extends StatelessWidget {
 
   /// 감정 분석 및 요약 수행
   Future<Map<String, dynamic>> analyzeAndSummarizeDiary(String diaryContent) async {
-    const String apiKey = "apiKey";
+    const String apiKey = "myApiKey";
     const String apiUrl = "https://api.openai.com/v1/chat/completions";
 
     try {
@@ -36,15 +36,15 @@ class WriteScreen extends StatelessWidget {
               "content": """
 다음 일기의 감정을 분석하고 요약해주세요.
 1. 긍정적이면 "isPositive: true"를, 부정적이면 "isPositive: false"를 반환해주세요.
-2. 일기에서 핵심 내용을 하나 뽑아 요약해주세요.
+2. 일기에서 핵심 사건을 하나만 뽑아 요약해주세요. 감정이 드러나는 핵심 사건이 없다면 첫번째 문장을 "summary"에 넣어주세요.
 일기: $diaryContent
 결과 형식:
-isPositive: true
-summary: 요약된 문장
+isPositive: true/false
+summary: 핵심 사건 또는 첫 번째 문장
 """
             }
           ],
-          "max_tokens": 100,
+          "max_tokens": 150,
           "temperature": 0.7,
         }),
       );
@@ -53,18 +53,23 @@ summary: 요약된 문장
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         final result = data['choices'][0]['message']['content'].trim();
 
-        final isPositiveMatch = RegExp(r'isPositive:\s*(true|false)').firstMatch(result);
+        // 정규식으로 데이터 추출
+        final isPositiveMatch = RegExp(r'isPositive:\s*(true|false|neutral)').firstMatch(result);
         final summaryMatch = RegExp(r'summary:\s*(.+)').firstMatch(result);
 
         return {
           "isPositive": isPositiveMatch?.group(1) == 'true',
-          "summary": summaryMatch?.group(1)?.trim() ?? "요약 실패",
+          "summary": summaryMatch?.group(1)?.trim() ?? diaryContent.split('.').first.trim(),
         };
       } else {
         throw Exception("GPT API Error: ${response.statusCode}");
       }
     } catch (e) {
-      throw Exception("GPT API 호출 실패: $e");
+      print("GPT API 호출 실패: $e");
+      return {
+        "isPositive": false, // 기본값
+        "summary": diaryContent.split('.').first.trim(), // 기본적으로 첫 문장을 요약으로
+      };
     }
   }
 
@@ -83,20 +88,12 @@ summary: 요약된 문장
       if (existingDoc.exists) {
         throw Exception("이미 해당 날짜에 작성된 일기가 있습니다.");
       }
-      print({
+
+      // Firestore에 저장
+      await diaryCollection.doc(docId).set({
         'date': selectedDay.toIso8601String(),
         'content': diaryContent,
-        'summary': analysisResult['summary'],
-        'isPositive': analysisResult['isPositive'],
-        'imageUrl': imageUrl ?? 'No Image URL',
-      });
-
-
-      // 일기 저장
-      await diaryCollection.doc(docId).set({
-        'date': selectedDay.toIso8601String(), // ISO 8601 형식으로 날짜 저장
-        'content': diaryContent,
-        'summary': analysisResult['summary'],
+        'summary': analysisResult['summary'] ?? diaryContent.split('.').first.trim(), // 요약 검증
         'isPositive': analysisResult['isPositive'],
         'imageUrl': imageUrl,
       });
@@ -107,7 +104,7 @@ summary: 요약된 문장
 
   /// DALL-E를 사용해 Pixel Art 생성
   Future<String?> generatePixelArtUsingDalle(String summary) async {
-    const String apiKey = "apiKey";
+    const String apiKey = "myApiKey";
     const String apiUrl = "https://api.openai.com/v1/images/generations";
 
     try {
@@ -119,7 +116,7 @@ summary: 요약된 문장
         },
         body: jsonEncode({
           "model": "dall-e-3",
-          "prompt": "Please illustrate \"$summary\" as a single cute pixel art illustration. Make it adorable. Don't add any speech bubbles or text in the image.",
+          "prompt": "Create a adorable pixel art illustration in an 8-bit style. Illustrate the scene described in \"$summary\".",
           "n": 1,
           "size": "1024x1024",
         }),
@@ -129,7 +126,6 @@ summary: 요약된 문장
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         return data['data'][0]['url']; // 이미지 URL 반환
       } else {
-        // 에러 발생 시 상태 코드와 메시지 출력
         print("DALL-E API Error: ${response.statusCode} ${response.body}");
         return null;
       }
@@ -146,13 +142,14 @@ summary: 요약된 문장
     return Scaffold(
       body: Column(
         children: [
-          // 상단 헤더
+          // 상단 헤더 수정
+          // 상단 헤더 수정
           Container(
             height: screenHeight * 0.15,
             decoration: const BoxDecoration(
               color: Colors.white,
               border: Border(
-                bottom: BorderSide(color: Color(0xFFE6E6E6), width: 1), // 아래쪽에 회색 선 추가
+                bottom: BorderSide(color: Color(0xFFE6E6E6), width: 1),
               ),
             ),
             child: Stack(
@@ -169,9 +166,9 @@ summary: 요약된 문장
                   left: 55,
                   top: 47,
                   child: Transform.rotate(
-                    angle: pi / 2,
+                    angle: pi / 2, // 90도 회전 (라디안 값 사용)
                     child: Image.asset(
-                      'assets/images/Pixmeli_Logo.png',
+                      'assets/images/Pixmeli_Logo.png', // 로고 이미지
                       width: 30,
                       height: 30,
                     ),
@@ -190,25 +187,10 @@ summary: 요약된 문장
                     ),
                   ),
                 ),
-                Positioned(
-                  right: 15,
-                  top: 33,
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text(
-                      '취소',
-                      style: TextStyle(
-                        color: Color(0xFFFBBC05),
-                        fontSize: 15,
-                        fontFamily: 'Inter',
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
+
           // 중간 섹션: 일기 입력
           Container(
             height: screenHeight * 0.50,
@@ -254,16 +236,15 @@ summary: 요약된 문장
                       );
                       final analysisResult = await analyzeAndSummarizeDiary(diaryContent);
                       final imageUrl = await generatePixelArtUsingDalle(analysisResult['summary']);
-                      print("Generated Image URL: $imageUrl");
                       await saveDiary(diaryContent, analysisResult, imageUrl);
                       Navigator.pop(context);
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => PixelartResultScreen(
-                            selectedDay: selectedDay, // 날짜 전달
-                            diaryContent: diaryContent, // 일기 내용 전달
-                            imageUrl: imageUrl ?? "", // 이미지 URL 전달 (null일 경우 빈 문자열)
+                            selectedDay: selectedDay,
+                            diaryContent: diaryContent,
+                            imageUrl: imageUrl ?? "",
                           ),
                         ),
                       );
